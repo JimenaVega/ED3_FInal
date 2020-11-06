@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- Name        : ED3_final.c
+ Name        : TPfinal_ED3.c
  Author      : 		$MAMANI, María Emilia
  	 	 	 	 	$VEGA CUEVAS, Silvia Jimena
  Version     :
@@ -23,6 +23,32 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_timer.h"
 #include "lpc17xx_uart.h"
+#include "lpc17xx_systick.h"
+
+//defines
+#define DELAY_AR 		100
+#define FILTER_1		0	//multiplexor filtros sensor
+#define FILTER_2		1
+#define FILTER_3		3
+	//DFPlayer commands
+
+#define NEXT 			0x01
+#define PREVIOUS 		0x02
+#define SPECIFY_TRACK	0x03
+#define INCR_VOL		0x04
+#define DECR_VOL		0x05
+#define SPECIFY_VOL		0x06
+#define SPECIFY_EQ		0x07
+#define SPECIFY_PB_M	0x08
+#define SPECIFY_PB_S	0x09
+#define STANDBY			0x0A
+#define NORMAL_WORK		0x0B
+#define RESET			0x0C
+#define PLAYBACK		0x0D
+#define PAUSE			0x0E
+#define SPECIFY_FOLDER	0x0F
+#define VOLUME_ADJ		0x10
+#define REPEAT			0x11
 
 //function prototypes
 void initUART(void);		//comunicacion con el DFPlayer
@@ -32,9 +58,24 @@ void initSysTick(void);		//inicializacion del systick para control de rebote
 void comandsDFP(void);		//control del módulo
 void antirrebote(void);		//antirebote por software para el pulsador
 
+	//DFplayer module functions
+void send_cmd(uint8_t cmd, uint16_t high_arg, uint16_t low_arg);
+void set_volume(uint16_t volume);
+void initSendBuffer(void);
+
+//Global variables
+	//DFPlayer
+uint8_t send_buf[10]; //trama de envio determinada por la configuracion del modulo
+//uint8_t recv_buf[10]; no se si se necesita, me parece que no
+
 
 int main(void) {
 	SystemInit();
+	initGPIO();
+	initUART();
+	initEXTI();
+	initSysTick();
+	initSendBuffer();
 
 	while(1){}
 
@@ -145,11 +186,63 @@ void initEXTI(void){
 	return;
 }
 
-void antirrebote(void){
+void initSysTick(void){
+
+	//configuracion destinada a delay de 100ms para eliminar efectos de rebote
+	SYSTICK_InternalInit(DELAY_AR);
+	SYSTICK_ClearCounterFlag();
 
 	return;
 }
 
+void delay(void){
+
+	//inicia la cuenta del systick y se habilitan las interrupciones
+	SYSTICK_IntCmd(ENABLE);
+	SYSTICK_Cmd(ENABLE);
+
+	return;
+}
+
+void SysTick_Handler(void){
+	//se baja la bandera de interrupcion, se detiene la cuenta y se deshabilitan las interrupciones
+	SYSTICK_ClearCounterFlag();
+	SYSTICK_Cmd(DISABLE);
+	SYSTICK_IntCmd(DISABLE);
+	return;
+}
+
+
+//se encarga de manejar las interrupciones originadas por el boton:
+	//se debe activar la multiplxacion de los puertos gpio
+	//se debe iniciar el delay
+
+void EINT0_IRQHandler(void){
+
+	EXTI_ClearEXTIFlag(EXTI_EINT0);
+
+	//se incorpora un delay para evitar rebotes del pulsador generen interrupciones
+	delay();
+
+	//multiplexacion filtros del sensor
+
+	return;
+}
+
+
+
+
+//DFPLAYER FUNCTIONS
+void initSendBuffer(void){
+	send_buf[0]=0x7E;			//start byte
+	send_buf[1]=0xFF;			//version
+	send_buf[2]=0x06;			//data length
+	send_buf[4]=0x00;			//no feedback
+	send_buf[7]=0xFF;			//
+	send_buf[8]=0xDD;			//checksum
+	send_buf[9]=0xEF;			//end byte
+	return;
+}
 
 
 
