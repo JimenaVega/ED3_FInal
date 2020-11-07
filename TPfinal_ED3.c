@@ -25,13 +25,15 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 #include "lpc17xx_uart.h"
 #include "lpc17xx_systick.h"
 
-//defines
+/**********************************defines************************************/
+
 #define DELAY_AR 		100
 #define FILTER_1		0	//multiplexor filtros sensor
 #define FILTER_2		1
 #define FILTER_3		3
-	//DFPlayer commands
+#define CMD_LINE_SIZE   10
 
+//DFPlayer commands
 #define NEXT 			0x01
 #define PREVIOUS 		0x02
 #define SPECIFY_TRACK	0x03
@@ -49,8 +51,16 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 #define SPECIFY_FOLDER	0x0F
 #define VOLUME_ADJ		0x10
 #define REPEAT			0x11
+//format
+#define START_BYTE		0x7E
+#define VERSION_BYTE	0xFF
+#define COMMAND_LENGTH	0x06
+#define ACKNOWLEDGE		0x00
+#define END_BYTE		0xEF
 
-//function prototypes
+
+/*************************function prototypes*********************************/
+
 void initUART(void);		//comunicacion con el DFPlayer
 void initGPIO(void);		//multiplexación filtros sensor, leds
 void initEXTI(void);		//pulsador para disparar el proceso de deteccion de color
@@ -58,17 +68,10 @@ void initSysTick(void);		//inicializacion del systick para control de rebote
 void comandsDFP(void);		//control del módulo
 void antirrebote(void);		//antirebote por software para el pulsador
 
-	//DFplayer module functions
-void send_cmd(uint8_t cmd, uint16_t high_arg, uint16_t low_arg);
-void set_volume(uint16_t volume);
-void initSendBuffer(void);
+//DFplayer module functions
+void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2); //trama de envio comandos
 
-//Global variables
-	//DFPlayer
-uint8_t send_buf[10]; //trama de envio determinada por la configuracion del modulo
-//uint8_t recv_buf[10]; no se si se necesita, me parece que no
-
-
+/*******************************main******************************************/
 int main(void) {
 	SystemInit();
 	initGPIO();
@@ -82,7 +85,7 @@ int main(void) {
     return 0 ;
 }
 
-
+/******************************functions**************************************/
 //valor de trabajo DFPlayer ajustable, pero por defecto, se mantiene en 9600
 void initUART(void){
 
@@ -123,6 +126,7 @@ void initUART(void){
 
 	UART_FIFOConfig(LPC_UART0, &confUART_FIFO);
 
+	UART_TxCmd(LPC_UART0, ENABLE);					//Enable transmission on UART TxD pin
 	return;
 }
 
@@ -204,6 +208,28 @@ void delay(void){
 	return;
 }
 
+void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
+	//checksum calcule
+	uint16_t checksum;
+	uint8_t  checksum_high;
+	uint8_t  checksum_low;
+
+	checksum = -(VERSION_BYTE + COMMAND_LENGTH + cmd + ACKNOWLEDGE + part1 + part2);
+	checksum_high=(0xFF00 & checksum)>>8;
+	checksum_low =(0x00FF & checksum);
+
+	//armado de la trama de transmision
+	uint8_t command_line[10] = {START_BYTE, VERSION_BYTE, COMMAND_LENGTH, cmd, ACKNOWLEDGE, part1, part2, checksum_high, checksum_low, END_BYTE};
+
+	//envío del comando byte por byte
+	for (int i=0; i<CMD_LINE_SIZE; i++){
+		UART_SendByte(LPC_UART0, command_line[i]);
+	}
+	return;
+}
+
+/***********************************handlers*********************************/
+
 void SysTick_Handler(void){
 	//se baja la bandera de interrupcion, se detiene la cuenta y se deshabilitan las interrupciones
 	SYSTICK_ClearCounterFlag();
@@ -232,17 +258,6 @@ void EINT0_IRQHandler(void){
 
 
 
-//DFPLAYER FUNCTIONS
-void initSendBuffer(void){
-	send_buf[0]=0x7E;			//start byte
-	send_buf[1]=0xFF;			//version
-	send_buf[2]=0x06;			//data length
-	send_buf[4]=0x00;			//no feedback
-	send_buf[7]=0xFF;			//
-	send_buf[8]=0xDD;			//checksum
-	send_buf[9]=0xEF;			//end byte
-	return;
-}
 
 
 
