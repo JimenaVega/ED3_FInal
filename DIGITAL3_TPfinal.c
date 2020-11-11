@@ -27,8 +27,8 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 
 /**********************************defines************************************/
 
-#define DELAY_AR 		100
-#define RED				1	//multiplexor filtros sensor
+#define DELAY_AR 		100		//uso delay de 100 ms
+#define RED				1		//multiplexor filtros sensor
 #define GREEN			2
 #define BLUE			3
 
@@ -52,7 +52,7 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 #define REPEAT			0x11
 #define PLAY_init       0x3F 	// iniciacion del modulo
 
-//format
+//formato trama de transmisión de los comandos
 #define CMD_LINE_SIZE   10
 #define START_BYTE		0x7E
 #define VERSION_BYTE	0xFF
@@ -63,15 +63,14 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 
 /*************************function prototypes*********************************/
 
-void initUART(void);		//comunicacion con el DFPlayer
-void initGPIO(void);		//multiplexación filtros sensor, leds
-void initEXTI(void);		//pulsador para disparar el proceso de deteccion de color
-void initSysTick(void);		//inicializacion del systick para control de rebote
-void initTMR0(void);		//timer0 se utilizara para determinar el duty cycle salida del sensor
-void initSensor(void);		//se inicializa el funcionamiento del sensor
-
-
-//DFplayer module functions
+void initGPIO(void);			//multiplexación filtros sensor, leds, capture0.0
+void initEXTI(void);			//pulsador para disparar el proceso de deteccion de color
+void initSysTick(void);			//inicializacion del systick para control de rebote
+void initTMR0(void);			//timer0 se utilizara para determinar el duty cycle salida del sensor
+void initSensor(void);			//se inicializa el funcionamiento del sensor
+void initUART(void);			//comunicacion con el DFPlayer
+void initDFplayer(void);		//inicializacón módulo DFplayer
+void delay(void);				//delay de 100ms
 void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2); //trama de envio comandos
 
 
@@ -82,71 +81,88 @@ int tmr_OnOff       =DISABLE;	//bandera que indica si el timer estaba contando o
 int actual_filter   =RED;		//indica el filtro activo
 int done            =DISABLE;	//bandera indica si ya se conoce el resultado de todos los canales
 
-uint32_t red_freq	;		//almacena la frecuencia detectada por el filtro rojo
-uint32_t green_freq	;		//almacena la frecuencia detectada por el filtro verde
-uint32_t blue_freq	;		//almacena la frecuencia detectada por el filtro azul
+uint32_t red_freq	;			//almacena la frecuencia detectada por el filtro rojo
+uint32_t green_freq	;			//almacena la frecuencia detectada por el filtro verde
+uint32_t blue_freq	;			//almacena la frecuencia detectada por el filtro azul
 
 /*******************************main******************************************/
 
+/*
+	INICIALIZACIÓN: Clock del sistema
+			   	    Modulos y perifericos usados
+
+	WHILE(1)	  : Una vez que se tienen las 3 intensidades de cada filtro, se busca el predominante
+					Se enciende el led correspondiente
+					Se reproduce el audio correspondiente
+					Entre comandos enviados se agrega un delay para el tiempo de procesamiento del módulo
+					Una vez hecho todo lo anterior, se bajan banderas de "done" y "detectColor_flag"
+
+	NOTA          : Dentro de la tarjeta SD, se nombra una carpeta como "1"
+					Dicha carpeta contiene los audios
+					Audio "1": rojo
+					Audio "2": verde
+					Audio "3": azul
+
+*/
 int main(void) {
 
-	//INICIALIZACIONES MÓDULOS
 	SystemInit();
 
-	initUART();
-	initTMR0();
-	initSysTick();
-	initSensor();
 	initGPIO();
 	initEXTI();
-
-	//INICIALIZACION DFPLAYER
-	sendCommand(PLAY_init, 0, 0);					//se inicia el dispositivo
-	sendCommand(SPECIFY_VOL, 0, 15);				//volumen medio (de 0 a 30)
-
+	initSysTick();
+	initTMR0();
+	initSensor();
+	initUART();
+	initDFplayer();
 
 
 	while(1){
 		if (done==ENABLE && detectColor_flag==ENABLE){
-			if (red_freq>green_freq && red_freq>blue_freq){
+			if (red_freq>green_freq && red_freq>blue_freq){			//color rojo detectado
 				GPIO_ClearValue(0, 3<<16);
-				GPIO_SetValue  (0, 1<<15);			//encender led rojo
+				GPIO_SetValue  (0, 1<<15);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 	//se elige la carpeta 1(nombrarla asi)
-				delay();							//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 1);	//se elige el primer track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
+				delay();											//no se si es suficiente o hace falta mayor delay
+				sendCommand(SPECIFY_TRACK, 0, 1);					//se elige el primer track de la carpeta(nombrarlo asi)
 			}
-			else if (green_freq>red_freq && green_freq>blue_freq){
+			else if (green_freq>red_freq && green_freq>blue_freq){	//color verde detectado
 				GPIO_ClearValue(0, 5<<15);
-				GPIO_SetValue  (0, 1<<16);			//encender led verde
+				GPIO_SetValue  (0, 1<<16);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 	//se elige la carpeta 1(nombrarla asi)
-				delay();							//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 2);	//se elige el segundo track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
+				delay();											//no se si es suficiente o hace falta mayor delay
+				sendCommand(SPECIFY_TRACK, 0, 2);					//se elige el segundo track de la carpeta(nombrarlo asi)
 			}
-			else if (blue_freq>red_freq && blue_freq>green_freq){
+			else if (blue_freq>red_freq && blue_freq>green_freq){	//color azul detectado
 				GPIO_ClearValue(0, 3<<15);
-				GPIO_SetValue  (0, 1<<17);			//encender led azul
+				GPIO_SetValue  (0, 1<<17);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 	//se elige la carpeta 1(nombrarla asi)
-				delay();							//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 3);	//se elige el tercer track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
+				delay();											//no se si es suficiente o hace falta mayor delay
+				sendCommand(SPECIFY_TRACK, 0, 3);					//se elige el tercer track de la carpeta(nombrarlo asi)
 			}
 
-			detectColor_flag=DISABLE; 			//deteccion finalizada
+			detectColor_flag=DISABLE;
+			done=DISABLE;
 		}
 	}
-
 
     return 0 ;
 }
 
 /******************************functions**************************************/
 
-//valor de trabajo DFPlayer ajustable, pero por defecto, se mantiene en 9600
-void initUART(void){
+/*
+  CONFIGURACION: Puerto UART0 para controlar módulo DFPlayer
+  	  	  	  	 Pinsel para configuar Tx y Rx correspondientes al UART0
+  	  	  	  	 Baudrate 9600 valor de trabajo del módulo
+  	  	  	  	 Se habilita la transmision Tx
+*/
 
-	//se configuran Tx y Rx correspondientes al UART0
+
+void initUART(void){
 
 	PINSEL_CFG_Type confUART_PIN;
 
@@ -163,7 +179,6 @@ void initUART(void){
 	confUART_PIN.Pinnum=3;
 	PINSEL_ConfigPin(&confUART_PIN);
 
-	//configuraciones UART
 
 	UART_CFG_Type confUART;
 
@@ -187,9 +202,15 @@ void initUART(void){
 	return;
 }
 
-void initGPIO(void){
 
-	//se configuran los pines de salida GPIO
+/*
+  CONFIGURACION: OUTPUT pines para control del sensor: S0 y S1 output frequency scaling
+  	  	  	  	  	  	  	  	  	  	  	  		   S2 y S3 photodiode type (seleccion del filtro)
+ 	 	 	 	 OUTPUT pines para leds de verificación
+ 	 	 	 	 CAPTURE (INPUT) pin de salida del sensor
+*/
+
+void initGPIO(void){
 
 	PINSEL_CFG_Type confGPIO;
 
@@ -231,10 +252,14 @@ void initGPIO(void){
 	return;
 }
 
+/*
+  CONFIGURACION: pin interrupcion externa 0 (pulsador)
+  NOTA         : Se configura con resistencia pull up, la interrupcion es activa por flanco de bajada
+  			     Interrupción de menor prioridad que la de TMR0 (proceso de detección del color)
+*/
+
 void initEXTI(void){
 
-	//configuracion pin interrupcion externa 0 (pulsador)
-	//se configura con resistencia pull up
 	PINSEL_CFG_Type confEXTI_PINS;
 
 	confEXTI_PINS.Funcnum  =1;
@@ -244,8 +269,7 @@ void initEXTI(void){
 	confEXTI_PINS.Pinnum   =10;
 	PINSEL_ConfigPin(&confEXTI_PINS);
 
-	//configuracion interrupcion externa provpcada por el pulsador
-	//al estar con resistencia pull up, la interrupcion es activa por flanco de bajada
+
 	EXTI_InitTypeDef confEXTI;
 
 	confEXTI.EXTI_Line=EXTI_EINT0;
@@ -253,25 +277,51 @@ void initEXTI(void){
 	confEXTI.EXTI_polarity=EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE;
 	EXTI_Config(&confEXTI);
 
+	NVIC_SetPriority(EINT0_IRQn, 3);
 	NVIC_EnableIRQ(EINT0_IRQn);
 
 	return;
 }
 
+/*
+  CONFIGURACION: Genera interrupcion cada 100ms cuando se inicia la cuenta
+  	  	  	  	 Se inicializa con interrupciones y cuenta desactivada
+  	  	  	  	 Prioridad mayor a la de las interrupciones externas y por timer0 (tiempo para que los procesos desencadenados por estos dos funcionen correctamente)
+
+  NOTA   	   : Destinado a delay para eliminar efectos de rebote
+
+*/
+
 void initSysTick(void){
 
-	//configuracion destinada a delay de 100ms para eliminar efectos de rebote
 	SYSTICK_InternalInit(DELAY_AR);
+	SYSTICK_IntCmd(DISABLE);
+	SYSTICK_Cmd(DISABLE);
 	SYSTICK_ClearCounterFlag();
+
+	NVIC_SetPriority(SysTick_IRQn, 1);
 
 	return;
 }
+
+
+/*
+  CONFIGURACION: Timer0 funcionando como contador con entrada de capture
+  	  	  	  	 Interrupciones en flancos de subida y bajada del pin de capture
+  	  	  	  	 Se usa el capture para determinar el período de la salida del sensor
+  	  	  	  	 Prioridad de interrupcion mayor a la interrupcion externa 0
+
+  NOTA         : Es necesario cambiar valor en lpc17xx_timer.h (por defecto usa clk/2) o recalcular para clk/4
+  	  	  	  	 No se enciende el timer, se iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
+  	  	  	  	 Aún no se habilita el manejo de interrupciones por el NVIC
+
+*/
 
 void initTMR0(void){
 	TIM_TIMERCFG_Type confTMR0;
 
 	confTMR0.PrescaleOption=TIM_PRESCALE_TICKVAL;
-	confTMR0.PrescaleValue =25000;  				//cambiar valor en lpc17xx_timer.h o recalcular para clk/4
+	confTMR0.PrescaleValue =25000;
 
 	TIM_Init(LPC_TIM0, TIM_TIMER_MODE, &confTMR0);
 
@@ -282,22 +332,57 @@ void initTMR0(void){
 	confCAPTURE.IntOnCaption=ENABLE;
 	confCAPTURE.RisingEdge=ENABLE;
 
-	TIM_ConfigCapture(LPC_TIM0, &confCAPTURE); 		//no se enciende el timer, iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
+	TIM_ConfigCapture(LPC_TIM0, &confCAPTURE);
+
+	NVIC_SetPriority(TIMER0_IRQn, 2);
+	NVIC_DisableIRQ(TIMER0_IRQn);
 
 	return;
 }
+
+/*
+  CONFIGURACION: control del sensor: S0 y S1 output frequency scaling to 20% -> output typically up to 12kHz
+  	  	  	  	  	  	  	  	  	 S2 y S3 photodiode type en bajo -> filtro rojo seleccionado
+
+*/
+
+void initSensor(void){
+	GPIO_SetValue(0, 1<<6);
+	GPIO_ClearValue(0, 3<<8);
+	return;
+}
+
+/*
+  CONFIGURACION: Inicia la cuenta del systick y se habilitan las interrupciones
+
+*/
 
 void delay(void){
-
-	//inicia la cuenta del systick y se habilitan las interrupciones
 	SYSTICK_IntCmd(ENABLE);
 	SYSTICK_Cmd(ENABLE);
-
 	return;
 }
 
+
+/*
+  CONFIGURACION: Inicialización del módulo DFPlayer
+  	  	  	  	 Configuración volumen medio (puede ir de 0 a 30, se configura como 15)
+
+*/
+
+void initDFplayer(void){
+	sendCommand(PLAY_init, 0, 0);
+	sendCommand(SPECIFY_VOL, 0, 15);
+	return;
+}
+
+
+/*
+  CONFIGURACION: Trama de transmisión de los comandos de control del módulo DFPlayer
+
+*/
+
 void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
-	//checksum calcule
 	uint16_t checksum;
 	uint8_t  checksum_high;
 	uint8_t  checksum_low;
@@ -307,75 +392,104 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 	checksum_low =(0x00FF & checksum);
 
 	//armado de la trama de transmision
-	uint8_t command_line[10] = {START_BYTE, VERSION_BYTE, COMMAND_LENGTH, cmd, ACKNOWLEDGE, part1, part2, checksum_high, checksum_low, END_BYTE};
+	uint8_t command_line[CMD_LINE_SIZE] = {START_BYTE, VERSION_BYTE, COMMAND_LENGTH, cmd, ACKNOWLEDGE, part1, part2, checksum_high, checksum_low, END_BYTE};
 
 	//envío del comando byte por byte
-	for (int i=0; i<CMD_LINE_SIZE; i++){
-		UART_SendByte(LPC_UART0, command_line[i]);
-	}
+	UART_Send(LPC_UART0, command_line, sizeof(command_line), BLOCKING);
+
 	return;
 }
 
-void initSensor(void){
-	GPIO_SetValue(0, 1<<6);		//frequency scaling to 20% -> output typically up to 12kHz
-	GPIO_ClearValue(0, 3<<8);	//S2 y S3 en bajo -> filtro rojo seleccionado
-	return;
-}
+
 
 /***********************************handlers*********************************/
 
-void SysTick_Handler(void){
-	SYSTICK_Cmd(DISABLE);				//el systick deja de contar
-	SYSTICK_IntCmd(DISABLE);			//se deshabilitan las interrupciones
-	SYSTICK_ClearCounterFlag();			//se baja la bandera de interrupcion
-	return;
-}
+/*
+  MANEJO: Presión del pulsador.
+  	  	  Debe iniciar el proceso de detección del color, para indicarlo, se pone en alto "detectColor_flag"
+  	  	  Incorpora el uso de un delay de 100ms para evitar interrupciones por rebote
+  	  	  Habilita las interrupciones por timer0. Previamente limpia la bandera de la interrupcion
+
+  NOTA  : Solamente una vez que se presionó el botón y hasta que se termine la detección del color se habilitan las interrupciones por timer0
+  	  	  Si el boton no se presiona, por mas que se tenga salida del sensor, no producen interrupciones
+*/
 
 void EINT0_IRQHandler(void){
-	EXTI_ClearEXTIFlag(EXTI_EINT0);		//se limpia la bandera de la interrupción
-	detectColor_flag=ENABLE;			//bandera en alto, inicia detección del color
-	delay();							//delay para evitar interrupciones por rebote
+	EXTI_ClearEXTIFlag(EXTI_EINT0);
+	detectColor_flag=ENABLE;
+	delay();
 
 	TIM_ClearIntCapturePending(LPC_TIM0, TIM_CR0_INT);
-	NVIC_EnableIRQ(TIMER0_IRQn);		//se habilitan interrupciones por timer0
+	NVIC_EnableIRQ(TIMER0_IRQn);
 	return;
 }
 
+/*
+  MANEJO: Una vez que pasaron los 100 ms de delay: el systick deja de contar
+  	  	  	  	  	  	  	  	  	  	  	  	   se deshabilitan las interrupciones
+  	  	  	  	  	  	  	  	  	  	  	  	   se baja la bandera de interrupcion
+*/
+
+void SysTick_Handler(void){
+	SYSTICK_Cmd(DISABLE);
+	SYSTICK_IntCmd(DISABLE);
+	SYSTICK_ClearCounterFlag();
+	return;
+}
+
+
+/*
+  MANEJO: Se entra a la ISR cuando se presiona el botón y se detecta un flanco en el pin de capture
+  	  	  Si se detecta el primer flanco, se inicia la cuenta del timer
+  	  	  Si se detecta el segundo flanco, se finaliza la cuenta del timer y se lo reinicia
+
+  	  	  Una vez detectado el segundo flanco: 	Se cambia el filtro cambiando el estado de los pines S2 y S3 (secuencia de filtros: ROJO, VERDE AZUL)
+  	  	  	  	  	  	  	  	  	  	  	  	Se almacena la cuenta del timer en el registro correspondiente a cada filtro
+
+  	  	  Una vez se tomaron los resultados de la salida de cada filtro: Se cambia el filtro nuevamente a rojo
+  	  	     	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 Se pone en alto la bandera "done", indica que ya se tomaron los valores necesarios
+  	  	     	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 Se deshabilitan las interrupciones por timer0 hasta que se presione nuevamente el botón
+
+  NOTA  : Se determina el período(y por defecto la frecuencia) midiendo el tiempo entre dos flancos de la señal cuadrada
+   	   	  "tmr_OnOff" indica si se trata del primer flanco o el segundo
+*/
+
 void TIMER0_IRQHandler(void){
-	TIM_ClearIntCapturePending(LPC_TIM0, TIM_CR0_INT);	//se limpia bandera de interrupcion por cap0.0
+	TIM_ClearIntCapturePending(LPC_TIM0, TIM_CR0_INT);
 
 	if(tmr_OnOff==DISABLE){
-		TIM_Cmd(LPC_TIM0, ENABLE);						//luego de la primera interrupción por timer, se habilita la cuenta
-		tmr_OnOff=ENABLE;								//bandera timer encendido
+		TIM_Cmd(LPC_TIM0, ENABLE);
+		tmr_OnOff=ENABLE;
 	}
 	else{
-		TIM_Cmd(LPC_TIM0, DISABLE);						//luego de la segunda interrupcion por capture, se deshabilita la cuenta
-		tmr_OnOff=DISABLE;								//bandera timer apagado
+		TIM_Cmd(LPC_TIM0, DISABLE);
+		tmr_OnOff=DISABLE;
 
 		switch(actual_filter){
 		case(RED):
 				red_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
-				GPIO_SetValue(0, 3<<8);					//S2 y S3 en alto
+				GPIO_SetValue(0, 3<<8);					//S2 y S3 en alto (filtro verde)
 				actual_filter=GREEN;
 				delay();
 				break;
 		case(GREEN):
 				green_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
-				GPIO_ClearValue(0, 1<<8);				//S2 en bajo
+				GPIO_ClearValue(0, 1<<8);				//S2 en bajo (filtro azul)
 				GPIO_SetValue  (0, 1<<9);				//S3 en alto
 				actual_filter=BLUE;
 				delay();
 				break;
 		case(BLUE):
 				blue_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
-				GPIO_ClearValue(0, 3<<8);				//S2 y S3 en bajo
+				GPIO_ClearValue(0, 3<<8);				//S2 y S3 en bajo (filtro rojo)
 				actual_filter=RED;
-				done =ENABLE;							//bandera que indica que ya se tienen los resultados de todos los filtros
-				NVIC_DisableIRQ(TIMER0_IRQn);			//si ya se determino la salida de cada filtro, se deshabilitan las interruciones por timer0
+				done =ENABLE;
+				NVIC_DisableIRQ(TIMER0_IRQn);
 				break;
 		}
-		TIM_ResetCounter(LPC_TIM0); 					//se resetea la cuenta del timer
+		TIM_ResetCounter(LPC_TIM0);
 	}
 
 	return;
 }
+
