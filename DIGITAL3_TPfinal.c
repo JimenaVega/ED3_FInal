@@ -155,7 +155,7 @@ int main(void) {
 /******************************functions**************************************/
 
 /*
-  CONFIGURACION: Puerto UART0 para controlar módulo DFPlayer
+  CONFIGURACION: Puerto UART3 para controlar módulo DFPlayer
   	  	  	  	 Pinsel para configuar Tx y Rx correspondientes al UART0
   	  	  	  	 Baudrate 9600 valor de trabajo del módulo
   	  	  	  	 Se habilita la transmision Tx
@@ -166,17 +166,17 @@ void initUART(void){
 
 	PINSEL_CFG_Type confUART_PIN;
 
-	confUART_PIN.Funcnum  =1;
+	confUART_PIN.Funcnum  =2;
 	confUART_PIN.OpenDrain=PINSEL_PINMODE_NORMAL;
 	confUART_PIN.Pinmode  =PINSEL_PINMODE_PULLUP;
 	confUART_PIN.Portnum  =0;
 
 		//Tx
-	confUART_PIN.Pinnum=2;
+	confUART_PIN.Pinnum=0;
 	PINSEL_ConfigPin(&confUART_PIN);
 
 		//Rx
-	confUART_PIN.Pinnum=3;
+	confUART_PIN.Pinnum=1;
 	PINSEL_ConfigPin(&confUART_PIN);
 
 
@@ -187,7 +187,7 @@ void initUART(void){
 	confUART.Parity   =UART_PARITY_NONE;
 	confUART.Stopbits =UART_STOPBIT_1;
 
-	UART_Init(LPC_UART0, &confUART);
+	UART_Init(LPC_UART3, &confUART);
 
 	UART_FIFO_CFG_Type confUART_FIFO;
 
@@ -196,9 +196,9 @@ void initUART(void){
 	confUART_FIFO.FIFO_ResetRxBuf=ENABLE;
 	confUART_FIFO.FIFO_ResetTxBuf=ENABLE;
 
-	UART_FIFOConfig(LPC_UART0, &confUART_FIFO);
+	UART_FIFOConfig(LPC_UART3, &confUART_FIFO);
 
-	UART_TxCmd(LPC_UART0, ENABLE);					//Enable transmission on UART TxD pin
+	UART_TxCmd(LPC_UART3, ENABLE);					//Enable transmission on UART TxD pin
 	return;
 }
 
@@ -404,7 +404,7 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 	uint8_t command_line[CMD_LINE_SIZE] = {START_BYTE, VERSION_BYTE, COMMAND_LENGTH, cmd, ACKNOWLEDGE, part1, part2, checksum_high, checksum_low, END_BYTE};
 
 	//envío del comando byte por byte
-	UART_Send(LPC_UART0, command_line, sizeof(command_line), BLOCKING);
+	UART_Send(LPC_UART3, command_line, sizeof(command_line), BLOCKING);
 
 	return;
 }
