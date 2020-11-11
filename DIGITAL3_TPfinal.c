@@ -70,7 +70,7 @@ void initTMR0(void);			//timer0 se utilizara para determinar el duty cycle salid
 void initSensor(void);			//se inicializa el funcionamiento del sensor
 void initUART(void);			//comunicacion con el DFPlayer
 void initDFplayer(void);		//inicializacón módulo DFplayer
-void delay(void);				//delay de 100ms
+void delay(int delayValue);		//delay multiplo de 100 ms
 void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2); //trama de envio comandos
 
 
@@ -80,6 +80,8 @@ int detectColor_flag=DISABLE;	//bandera que se pondrá en alto si se presiona el
 int tmr_OnOff       =DISABLE;	//bandera que indica si el timer estaba contando o no
 int actual_filter   =RED;		//indica el filtro activo
 int done            =DISABLE;	//bandera indica si ya se conoce el resultado de todos los canales
+int delayValue		;			//cuando es 1: delay de 100ms. Cuando es 2: delay de 200ms, etc
+int whishedDelay    ;			//variable para almacenar el valor de delay deseado (no cambia, por otro lado, delayValue va aumentando)
 
 uint32_t red_freq	;			//almacena la frecuencia detectada por el filtro rojo
 uint32_t green_freq	;			//almacena la frecuencia detectada por el filtro verde
@@ -94,7 +96,7 @@ uint32_t blue_freq	;			//almacena la frecuencia detectada por el filtro azul
 	WHILE(1)	  : Una vez que se tienen las 3 intensidades de cada filtro, se busca el predominante
 					Se enciende el led correspondiente
 					Se reproduce el audio correspondiente
-					Entre comandos enviados se agrega un delay para el tiempo de procesamiento del módulo
+					Entre comandos enviados se agrega un delay de 500ms para el tiempo de procesamiento del módulo
 					Una vez hecho todo lo anterior, se bajan banderas de "done" y "detectColor_flag"
 
 	NOTA          : Dentro de la tarjeta SD, se nombra una carpeta como "1"
@@ -123,25 +125,23 @@ int main(void) {
 				GPIO_ClearValue(0, 3<<16);
 				GPIO_SetValue  (0, 1<<15);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
-				delay();											//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 1);					//se elige el primer track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 1, 1); 					//se elige la carpeta 1(nombrarla "01"), se elige el primer track de la carpeta(nombrarlo como "001")
+				delay(5);
 			}
 			else if (green_freq>red_freq && green_freq>blue_freq){	//color verde detectado
 				GPIO_ClearValue(0, 5<<15);
 				GPIO_SetValue  (0, 1<<16);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
-				delay();											//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 2);					//se elige el segundo track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 1, 2); 					//se elige la carpeta 1(nombrarla "01"),se elige el segundo track de la carpeta(nombrarlo como "002")
+				delay(5);
+
 			}
 			else if (blue_freq>red_freq && blue_freq>green_freq){	//color azul detectado
 				GPIO_ClearValue(0, 3<<15);
 				GPIO_SetValue  (0, 1<<17);
 
-				sendCommand(SPECIFY_FOLDER, 0, 1); 					//se elige la carpeta 1(nombrarla asi)
-				delay();											//no se si es suficiente o hace falta mayor delay
-				sendCommand(SPECIFY_TRACK, 0, 3);					//se elige el tercer track de la carpeta(nombrarlo asi)
+				sendCommand(SPECIFY_FOLDER, 1, 3); 					//se elige la carpeta 1(nombrarla "01"), se elige el tercer track de la carpeta(nombrarlo como "003")
+				delay(5);
 			}
 
 			detectColor_flag=DISABLE;
@@ -354,12 +354,19 @@ void initSensor(void){
 
 /*
   CONFIGURACION: Inicia la cuenta del systick y se habilitan las interrupciones
-
+				 Delay 100ms = no entra al while ya que se logra en la primer interrupcion
+				 Delay mayor a 100ms = entra al while
 */
 
-void delay(void){
+void delay(int delayValue){
+
 	SYSTICK_IntCmd(ENABLE);
 	SYSTICK_Cmd(ENABLE);
+	whishedDelay=delayValue;
+
+	if (delayValue != 1){
+		while(delayValue<(2*whishedDelay)){}
+	}
 	return;
 }
 
@@ -372,7 +379,9 @@ void delay(void){
 
 void initDFplayer(void){
 	sendCommand(PLAY_init, 0, 0);
+	delay(5);
 	sendCommand(SPECIFY_VOL, 0, 15);
+	delay(5);
 	return;
 }
 
@@ -407,7 +416,7 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 /*
   MANEJO: Presión del pulsador.
   	  	  Debe iniciar el proceso de detección del color, para indicarlo, se pone en alto "detectColor_flag"
-  	  	  Incorpora el uso de un delay de 100ms para evitar interrupciones por rebote
+  	  	  Incorpora el uso de un delay de 200ms para evitar interrupciones por rebote
   	  	  Habilita las interrupciones por timer0. Previamente limpia la bandera de la interrupcion
 
   NOTA  : Solamente una vez que se presionó el botón y hasta que se termine la detección del color se habilitan las interrupciones por timer0
@@ -417,7 +426,7 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 void EINT0_IRQHandler(void){
 	EXTI_ClearEXTIFlag(EXTI_EINT0);
 	detectColor_flag=ENABLE;
-	delay();
+	delay(2);
 
 	TIM_ClearIntCapturePending(LPC_TIM0, TIM_CR0_INT);
 	NVIC_EnableIRQ(TIMER0_IRQn);
@@ -425,15 +434,25 @@ void EINT0_IRQHandler(void){
 }
 
 /*
-  MANEJO: Una vez que pasaron los 100 ms de delay: el systick deja de contar
-  	  	  	  	  	  	  	  	  	  	  	  	   se deshabilitan las interrupciones
-  	  	  	  	  	  	  	  	  	  	  	  	   se baja la bandera de interrupcion
+
+  MANEJO: Una vez que pasaron los ms de delay: el systick deja de contar
+  	  	  	  	  	  	  	  	  	  	  	   se deshabilitan las interrupciones
+  	  	  	  	  	  	  	  	  	  	  	   se baja la bandera de interrupcion
+
 */
 
 void SysTick_Handler(void){
-	SYSTICK_Cmd(DISABLE);
-	SYSTICK_IntCmd(DISABLE);
+	if(delayValue==1 || delayValue==(2*whishedDelay-1)){
+		SYSTICK_Cmd(DISABLE);
+		SYSTICK_IntCmd(DISABLE);
+		delayValue=2*whishedDelay;
+	}
+	else if (delayValue>=whishedDelay && delayValue<(2*whishedDelay-1)){
+		delayValue++;
+	}
+
 	SYSTICK_ClearCounterFlag();
+
 	return;
 }
 
@@ -470,19 +489,20 @@ void TIMER0_IRQHandler(void){
 				red_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_SetValue(0, 3<<8);					//S2 y S3 en alto (filtro verde)
 				actual_filter=GREEN;
-				delay();
+				delay(1);
 				break;
 		case(GREEN):
 				green_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_ClearValue(0, 1<<8);				//S2 en bajo (filtro azul)
 				GPIO_SetValue  (0, 1<<9);				//S3 en alto
 				actual_filter=BLUE;
-				delay();
+				delay(1);
 				break;
 		case(BLUE):
 				blue_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_ClearValue(0, 3<<8);				//S2 y S3 en bajo (filtro rojo)
 				actual_filter=RED;
+				delay(1);
 				done =ENABLE;
 				NVIC_DisableIRQ(TIMER0_IRQn);
 				break;
