@@ -312,13 +312,12 @@ void initSysTick(void){
 
 
 /*
-  CONFIGURACION: Timer0 funcionando como contador con entrada de capture
+  CONFIGURACION: Timer0 funcionando como contador con entrada de capture, período de 1us
   	  	  	  	 Interrupciones en flancos de subida y bajada del pin de capture
   	  	  	  	 Se usa el capture para determinar el período de la salida del sensor
   	  	  	  	 Prioridad de interrupcion mayor a la interrupcion externa 0
 
-  NOTA         : Es necesario cambiar valor en lpc17xx_timer.h (por defecto usa clk/2) o recalcular para clk/4
-  	  	  	  	 No se enciende el timer, se iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
+  NOTA         : No se enciende el timer, se iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
   	  	  	  	 Aún no se habilita el manejo de interrupciones por el NVIC
 
 */
