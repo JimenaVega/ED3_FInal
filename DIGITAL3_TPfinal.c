@@ -17,6 +17,8 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 #include "LPC17xx.h"
 #endif
 
+#include <stdio.h>
+
 #include "lpc17xx_gpio.h"
 #include "lpc17xx_exti.h"
 #include "lpc17xx_nvic.h"
@@ -27,7 +29,7 @@ personas ciegas, cuenta con un parlante, el cual emite un audio con el color det
 
 /**********************************defines************************************/
 
-#define DELAY_AR 		100		//uso delay de 100 ms
+#define DELAY_AR 		10	//uso delay de 100 ms
 #define RED				1		//multiplexor filtros sensor
 #define GREEN			2
 #define BLUE			3
@@ -70,7 +72,7 @@ void initTMR0(void);			//timer0 se utilizara para determinar el duty cycle salid
 void initSensor(void);			//se inicializa el funcionamiento del sensor
 void initUART(void);			//comunicacion con el DFPlayer
 void initDFplayer(void);		//inicializacón módulo DFplayer
-void delay(int delayValue);		//delay multiplo de 100 ms
+void delay(int delayVal);		//delay multiplo de 100 ms
 void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2); //trama de envio comandos
 
 
@@ -110,13 +112,14 @@ int main(void) {
 
 	SystemInit();
 
+	EXTI_ClearEXTIFlag(EXTI_EINT2);
 	initGPIO();
-	initEXTI();
 	initSysTick();
 	initTMR0();
 	initSensor();
 	initUART();
 	initDFplayer();
+	initEXTI();
 
 
 	while(1){
@@ -260,25 +263,28 @@ void initGPIO(void){
 
 void initEXTI(void){
 
+
 	PINSEL_CFG_Type confEXTI_PINS;
 
 	confEXTI_PINS.Funcnum  =1;
 	confEXTI_PINS.OpenDrain=PINSEL_PINMODE_NORMAL;
 	confEXTI_PINS.Pinmode  =PINSEL_PINMODE_PULLUP;
 	confEXTI_PINS.Portnum  =2;
-	confEXTI_PINS.Pinnum   =10;
+	confEXTI_PINS.Pinnum   =12;
 	PINSEL_ConfigPin(&confEXTI_PINS);
 
 
 	EXTI_InitTypeDef confEXTI;
 
-	confEXTI.EXTI_Line=EXTI_EINT0;
+	confEXTI.EXTI_Line=EXTI_EINT2;
 	confEXTI.EXTI_Mode=EXTI_MODE_EDGE_SENSITIVE;
 	confEXTI.EXTI_polarity=EXTI_POLARITY_LOW_ACTIVE_OR_FALLING_EDGE;
 	EXTI_Config(&confEXTI);
 
-	NVIC_SetPriority(EINT0_IRQn, 3);
-	NVIC_EnableIRQ(EINT0_IRQn);
+	EXTI_ClearEXTIFlag(EXTI_EINT2);
+
+	//NVIC_SetPriority(EINT2_IRQn, 3);
+	NVIC_EnableIRQ(EINT2_IRQn);
 
 	return;
 }
@@ -299,7 +305,7 @@ void initSysTick(void){
 	SYSTICK_Cmd(DISABLE);
 	SYSTICK_ClearCounterFlag();
 
-	NVIC_SetPriority(SysTick_IRQn, 1);
+	//NVIC_SetPriority(SysTick_IRQn, 1);
 
 	return;
 }
@@ -321,7 +327,7 @@ void initTMR0(void){
 	TIM_TIMERCFG_Type confTMR0;
 
 	confTMR0.PrescaleOption=TIM_PRESCALE_TICKVAL;
-	confTMR0.PrescaleValue =25000;
+	confTMR0.PrescaleValue =25;
 
 	TIM_Init(LPC_TIM0, TIM_TIMER_MODE, &confTMR0);
 
@@ -334,7 +340,7 @@ void initTMR0(void){
 
 	TIM_ConfigCapture(LPC_TIM0, &confCAPTURE);
 
-	NVIC_SetPriority(TIMER0_IRQn, 2);
+	//NVIC_SetPriority(TIMER0_IRQn, 2);
 	NVIC_DisableIRQ(TIMER0_IRQn);
 
 	return;
@@ -358,14 +364,19 @@ void initSensor(void){
 				 Delay mayor a 100ms = entra al while
 */
 
-void delay(int delayValue){
+void delay(int delayVal){
 
 	SYSTICK_IntCmd(ENABLE);
 	SYSTICK_Cmd(ENABLE);
-	whishedDelay=delayValue;
+	whishedDelay=delayVal;
+	delayValue = delayVal;
+	//printf("\n delay value = %ld", delayValue);
 
 	if (delayValue != 1){
-		while(delayValue<(2*whishedDelay)){}
+		while(delayValue<(2*whishedDelay)){
+			//printf("\nhola soy un delay");
+			//printf("\n systick value = %ld", SysTick->VAL);
+		}
 	}
 	return;
 }
@@ -380,8 +391,10 @@ void delay(int delayValue){
 void initDFplayer(void){
 	sendCommand(PLAY_init, 0, 0);
 	delay(5);
+
 	sendCommand(SPECIFY_VOL, 0, 15);
 	delay(5);
+
 	return;
 }
 
@@ -423,12 +436,18 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
   	  	  Si el boton no se presiona, por mas que se tenga salida del sensor, no producen interrupciones
 */
 
-void EINT0_IRQHandler(void){
-	EXTI_ClearEXTIFlag(EXTI_EINT0);
+void EINT2_IRQHandler(void){
+	static uint32_t count = 0;
+	count++;
+	printf("-----------------------------------------\n");
+	printf("dentro de interrupt EINT2: # %ld\n",count);
+	printf("\n-----------------------------------------\n");
+
 	detectColor_flag=ENABLE;
-	delay(2);
+	delay(1);
 
 	TIM_ClearIntCapturePending(LPC_TIM0, TIM_CR0_INT);
+	EXTI_ClearEXTIFlag(EXTI_EINT2);
 	NVIC_EnableIRQ(TIMER0_IRQn);
 	return;
 }
@@ -442,13 +461,15 @@ void EINT0_IRQHandler(void){
 */
 
 void SysTick_Handler(void){
-	if(delayValue==1 || delayValue==(2*whishedDelay-1)){
+
+	if((delayValue==1) || (delayValue==(2*whishedDelay-1))){
 		SYSTICK_Cmd(DISABLE);
 		SYSTICK_IntCmd(DISABLE);
 		delayValue=2*whishedDelay;
 	}
-	else if (delayValue>=whishedDelay && delayValue<(2*whishedDelay-1)){
+	else if ((delayValue>=whishedDelay) && (delayValue<(2*whishedDelay-1))){
 		delayValue++;
+		printf("\ndelay value = %ld", delayValue);
 	}
 
 	SYSTICK_ClearCounterFlag();
