@@ -129,6 +129,7 @@ int main(void) {
 				GPIO_SetValue  (0, 1<<15);
 
 				sendCommand(SPECIFY_FOLDER, 1, 1); 					//se elige la carpeta 1(nombrarla "01"), se elige el primer track de la carpeta(nombrarlo como "001")
+				printf("\ncolor detactado: rojo");
 				delay(5);
 			}
 			else if (green_freq>red_freq && green_freq>blue_freq){	//color verde detectado
@@ -136,6 +137,7 @@ int main(void) {
 				GPIO_SetValue  (0, 1<<16);
 
 				sendCommand(SPECIFY_FOLDER, 1, 2); 					//se elige la carpeta 1(nombrarla "01"),se elige el segundo track de la carpeta(nombrarlo como "002")
+				printf("\ncolor detactado: verde");
 				delay(5);
 
 			}
@@ -144,6 +146,7 @@ int main(void) {
 				GPIO_SetValue  (0, 1<<17);
 
 				sendCommand(SPECIFY_FOLDER, 1, 3); 					//se elige la carpeta 1(nombrarla "01"), se elige el tercer track de la carpeta(nombrarlo como "003")
+				printf("\ncolor detactado: azul");
 				delay(5);
 			}
 
@@ -175,7 +178,7 @@ void initUART(void){
 	confUART_PIN.Portnum  =0;
 
 		//Tx
-	confUART_PIN.Pinnum=0;
+	confUART_PIN.Pinnum=25;
 	PINSEL_ConfigPin(&confUART_PIN);
 
 		//Rx
@@ -312,12 +315,13 @@ void initSysTick(void){
 
 
 /*
-  CONFIGURACION: Timer0 funcionando como contador con entrada de capture, período de 1us
+  CONFIGURACION: Timer0 funcionando como contador con entrada de capture
   	  	  	  	 Interrupciones en flancos de subida y bajada del pin de capture
   	  	  	  	 Se usa el capture para determinar el período de la salida del sensor
   	  	  	  	 Prioridad de interrupcion mayor a la interrupcion externa 0
 
-  NOTA         : No se enciende el timer, se iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
+  NOTA         : Es necesario cambiar valor en lpc17xx_timer.h (por defecto usa clk/2) o recalcular para clk/4
+  	  	  	  	 No se enciende el timer, se iniciará la cuenta una vez que sea detectado el flanco del capture y se apagara con el segundo
   	  	  	  	 Aún no se habilita el manejo de interrupciones por el NVIC
 
 */
@@ -339,7 +343,6 @@ void initTMR0(void){
 
 	TIM_ConfigCapture(LPC_TIM0, &confCAPTURE);
 
-	//NVIC_SetPriority(TIMER0_IRQn, 2);
 	NVIC_DisableIRQ(TIMER0_IRQn);
 
 	return;
@@ -367,14 +370,11 @@ void delay(int delayVal){
 
 	SYSTICK_IntCmd(ENABLE);
 	SYSTICK_Cmd(ENABLE);
-	whishedDelay=delayVal;
-	delayValue = delayVal;
-	//printf("\n delay value = %ld", delayValue);
+	whishedDelay = delayVal;
+	delayValue   = delayVal;
 
 	if (delayValue != 1){
 		while(delayValue<(2*whishedDelay)){
-			//printf("\nhola soy un delay");
-			//printf("\n systick value = %ld", SysTick->VAL);
 		}
 	}
 	return;
@@ -387,14 +387,14 @@ void delay(int delayVal){
 
 */
 
+
 void initDFplayer(void){
-	sendCommand(PLAY_init, 0, 0);
-	delay(5);
 
-	sendCommand(SPECIFY_VOL, 0, 15);
-	delay(5);
-
-	return;
+    sendCommand(SPECIFY_PB_S, 0, 2);
+    delay(5);
+    sendCommand(SPECIFY_VOL, 0, 30);
+    delay(5);
+    return;
 }
 
 
@@ -416,8 +416,12 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 	uint8_t command_line[CMD_LINE_SIZE] = {START_BYTE, VERSION_BYTE, COMMAND_LENGTH, cmd, ACKNOWLEDGE, part1, part2, checksum_high, checksum_low, END_BYTE};
 
 	//envío del comando byte por byte
-	UART_Send(LPC_UART3, command_line, sizeof(command_line), BLOCKING);
+	uint32_t nbytes = UART_Send(LPC_UART3, command_line, sizeof(command_line), BLOCKING);
+	printf("\nUART: se enviaron %ld bytes\nTrama de comunicacion:\n", nbytes);
 
+	for ( int i = 0; i < CMD_LINE_SIZE; i++){
+		printf("byte %d : %x\n", i, command_line[i]);
+	}
 	return;
 }
 
@@ -438,7 +442,7 @@ void sendCommand(uint8_t cmd, uint8_t part1, uint8_t part2){
 void EINT2_IRQHandler(void){
 	static uint32_t count = 0;
 	count++;
-	printf("-----------------------------------------\n");
+	printf("\n-----------------------------------------\n");
 	printf("dentro de interrupt EINT2: # %ld\n",count);
 	printf("\n-----------------------------------------\n");
 
@@ -468,7 +472,6 @@ void SysTick_Handler(void){
 	}
 	else if ((delayValue>=whishedDelay) && (delayValue<(2*whishedDelay-1))){
 		delayValue++;
-		printf("\ndelay value = %ld", delayValue);
 	}
 
 	SYSTICK_ClearCounterFlag();
@@ -508,6 +511,8 @@ void TIMER0_IRQHandler(void){
 		case(RED):
 				red_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_SetValue(0, 3<<8);					//S2 y S3 en alto (filtro verde)
+				printf("\nRED frequency = %ld", red_freq);
+
 				actual_filter=GREEN;
 				delay(1);
 				break;
@@ -515,12 +520,16 @@ void TIMER0_IRQHandler(void){
 				green_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_ClearValue(0, 1<<8);				//S2 en bajo (filtro azul)
 				GPIO_SetValue  (0, 1<<9);				//S3 en alto
+
+				printf("\nGREEN frequency = %ld", green_freq);
 				actual_filter=BLUE;
 				delay(1);
 				break;
 		case(BLUE):
 				blue_freq=TIM_GetCaptureValue(LPC_TIM0, TIM_COUNTER_INCAP0);
 				GPIO_ClearValue(0, 3<<8);				//S2 y S3 en bajo (filtro rojo)
+
+				printf("\nBLUE frequency = %ld", blue_freq);
 				actual_filter=RED;
 				delay(1);
 				done =ENABLE;
